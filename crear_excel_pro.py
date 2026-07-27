@@ -242,7 +242,7 @@ class StyledXlsx:
                        ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml')
             if i in self.sheet_images:
                 SubElement(root, 'Override', PartName=f'/xl/drawings/drawing{i+1}.xml',
-                           ContentType='application/vnd.openxmlformats-officedocument.drawingml.chartsheet+xml')
+                           ContentType='application/vnd.openxmlformats-officedocument.drawing+xml')
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + ET.tostring(root, encoding='unicode')
     
     def _rels_root(self):
@@ -253,15 +253,13 @@ class StyledXlsx:
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + ET.tostring(root, encoding='unicode')
     
     def _workbook(self):
-        root = Element('workbook', xmlns=NS)
-        root.set('xmlns:r', NS_R)
-        sheets = SubElement(root, 'sheets')
+        # Build manually to avoid namespace issues
+        xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        xml += f'<workbook xmlns="{NS}" xmlns:r="{NS_R}"><sheets>'
         for i, (name, _, _) in enumerate(self.sheets):
-            s = SubElement(sheets, 'sheet')
-            s.set('name', name)
-            s.set('sheetId', str(i+1))
-            s.set('r:id', f'rId{i+1}')
-        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + ET.tostring(root, encoding='unicode')
+            xml += f'<sheet name="{name}" sheetId="{i+1}" r:id="rId{i+1}"/>'
+        xml += '</sheets></workbook>'
+        return xml
     
     def _wb_rels(self):
         root = Element('Relationships', xmlns=NS_REL)
@@ -355,17 +353,18 @@ class StyledXlsx:
     
     def _make_sheet(self, cells, meta, sheet_idx):
         """Generate worksheet XML."""
-        root = Element('worksheet', xmlns=NS)
-        root.set('xmlns:r', NS_R)
+        # Start building XML manually for proper namespace handling
+        parts = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>']
+        parts.append(f'<worksheet xmlns="{NS}" xmlns:r="{NS_R}">')
         
         # Column widths
         if meta.get('col_widths'):
-            cols = SubElement(root, 'cols')
+            parts.append('<cols>')
             for col_idx, width in sorted(meta['col_widths'].items()):
-                SubElement(cols, 'col', min=str(col_idx+1), max=str(col_idx+1),
-                          width=str(width), customWidth='1')
+                parts.append(f'<col min="{col_idx+1}" max="{col_idx+1}" width="{width}" customWidth="1"/>')
+            parts.append('</cols>')
         
-        sd = SubElement(root, 'sheetData')
+        parts.append('<sheetData>')
         
         if cells:
             rows_dict = {}
@@ -373,42 +372,44 @@ class StyledXlsx:
                 rows_dict.setdefault(r, []).append((c, val, style))
             
             for row_idx in sorted(rows_dict.keys()):
-                row_attrs = {'r': str(row_idx + 1)}
-                if row_idx in meta.get('row_heights', {}):
-                    row_attrs['ht'] = str(meta['row_heights'][row_idx])
-                    row_attrs['customHeight'] = '1'
-                row_el = SubElement(sd, 'row', **row_attrs)
+                ht = meta.get('row_heights', {}).get(row_idx)
+                if ht:
+                    parts.append(f'<row r="{row_idx+1}" ht="{ht}" customHeight="1">')
+                else:
+                    parts.append(f'<row r="{row_idx+1}">')
                 
                 for col_idx, val, style in sorted(rows_dict[row_idx]):
                     ref = cref(row_idx, col_idx)
-                    c_attrs = {'r': ref}
-                    if style is not None:
-                        c_attrs['s'] = str(style)
-                    c_el = SubElement(row_el, 'c', **c_attrs)
+                    s_attr = f' s="{style}"' if style is not None else ''
                     
                     if isinstance(val, str) and val.startswith('='):
-                        f_el = SubElement(c_el, 'f')
-                        f_el.text = val[1:]
+                        formula = val[1:].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+                        parts.append(f'<c r="{ref}"{s_attr}><f>{formula}</f></c>')
                     elif isinstance(val, (int, float)):
-                        v_el = SubElement(c_el, 'v')
-                        v_el.text = str(val)
+                        parts.append(f'<c r="{ref}"{s_attr}><v>{val}</v></c>')
                     elif val is not None and val != '':
                         idx = self._ss_idx(val)
-                        c_el.set('t', 's')
-                        v_el = SubElement(c_el, 'v')
-                        v_el.text = str(idx)
+                        parts.append(f'<c r="{ref}"{s_attr} t="s"><v>{idx}</v></c>')
+                    else:
+                        parts.append(f'<c r="{ref}"{s_attr}/>')
+                
+                parts.append('</row>')
+        
+        parts.append('</sheetData>')
         
         # Merge cells
         if meta.get('merges'):
-            mc = SubElement(root, 'mergeCells', count=str(len(meta['merges'])))
+            parts.append(f'<mergeCells count="{len(meta["merges"])}">')
             for merge in meta['merges']:
-                SubElement(mc, 'mergeCell', ref=merge)
+                parts.append(f'<mergeCell ref="{merge}"/>')
+            parts.append('</mergeCells>')
         
         # Drawing reference
         if sheet_idx in self.sheet_images:
-            SubElement(root, 'drawing', **{'{%s}id' % NS_R: 'rId1'})
+            parts.append('<drawing r:id="rId1"/>')
         
-        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + ET.tostring(root, encoding='unicode')
+        parts.append('</worksheet>')
+        return '\n'.join(parts)
     
     def _sheet_rels(self, sheet_idx):
         root = Element('Relationships', xmlns=NS_REL)
