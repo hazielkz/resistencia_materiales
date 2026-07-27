@@ -212,16 +212,6 @@ class StyledXlsx:
             
             for i, xml in enumerate(sheet_xmls):
                 zf.writestr(f'xl/worksheets/sheet{i+1}.xml', xml)
-                if i in self.sheet_images:
-                    zf.writestr(f'xl/worksheets/_rels/sheet{i+1}.xml.rels', 
-                               self._sheet_rels(i))
-                    zf.writestr(f'xl/drawings/drawing{i+1}.xml',
-                               self._drawing(i))
-                    zf.writestr(f'xl/drawings/_rels/drawing{i+1}.xml.rels',
-                               self._drawing_rels(i))
-            
-            for idx, img in enumerate(self.images_data):
-                zf.writestr(f'xl/media/image{idx+1}.png', img)
 
 
     
@@ -230,7 +220,6 @@ class StyledXlsx:
         SubElement(root, 'Default', Extension='rels',
                    ContentType='application/vnd.openxmlformats-package.relationships+xml')
         SubElement(root, 'Default', Extension='xml', ContentType='application/xml')
-        SubElement(root, 'Default', Extension='png', ContentType='image/png')
         SubElement(root, 'Override', PartName='/xl/workbook.xml',
                    ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml')
         SubElement(root, 'Override', PartName='/xl/sharedStrings.xml',
@@ -240,9 +229,6 @@ class StyledXlsx:
         for i in range(len(self.sheets)):
             SubElement(root, 'Override', PartName=f'/xl/worksheets/sheet{i+1}.xml',
                        ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml')
-            if i in self.sheet_images:
-                SubElement(root, 'Override', PartName=f'/xl/drawings/drawing{i+1}.xml',
-                           ContentType='application/vnd.openxmlformats-officedocument.drawing+xml')
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + ET.tostring(root, encoding='unicode')
     
     def _rels_root(self):
@@ -404,9 +390,9 @@ class StyledXlsx:
                 parts.append(f'<mergeCell ref="{merge}"/>')
             parts.append('</mergeCells>')
         
-        # Drawing reference
-        if sheet_idx in self.sheet_images:
-            parts.append('<drawing r:id="rId1"/>')
+        # Drawing reference (disabled - removed images for compatibility)
+        # if sheet_idx in self.sheet_images:
+        #     parts.append('<drawing r:id="rId1"/>')
         
         parts.append('</worksheet>')
         return '\n'.join(parts)
@@ -790,13 +776,24 @@ def crear_hoja_propiedades(wb):
     put(cells, r+14, 2, "m", S.S_UNIT)
     put(cells, r+14, 3, "Radio de giro eje y. El menor rige el pandeo.", S.S_FORMULA_EXPLAIN)
     
-    # Add images to sheet
-    wb.add_image(0, circle_img(), 5, 6)
-    wb.add_image(0, circle_hollow_img(), 5, 17)
-    wb.add_image(0, square_img(), 5, 28)
-    wb.add_image(0, square_hollow_img(), 5, 38)
-    wb.add_image(0, rect_img(), 5, 49)
-    wb.add_image(0, rect_hollow_img(), 5, 63)
+    # Add visual text representations instead of images
+    put(cells, 7, 4, "    ●", S.S_STEP_NUM)
+    put(cells, 8, 4, "  (   )", S.S_STEP_NUM)
+    
+    put(cells, 18, 4, "  ◎", S.S_STEP_NUM)
+    put(cells, 19, 4, " (○)", S.S_STEP_NUM)
+    
+    put(cells, 29, 4, "  ■", S.S_STEP_NUM)
+    put(cells, 30, 4, " [  ]", S.S_STEP_NUM)
+    
+    put(cells, 39, 4, "  ▣", S.S_STEP_NUM)
+    put(cells, 40, 4, " [□]", S.S_STEP_NUM)
+    
+    put(cells, 50, 4, "  ▬", S.S_STEP_NUM)
+    put(cells, 51, 4, " [==]", S.S_STEP_NUM)
+    
+    put(cells, 64, 4, "  ▭", S.S_STEP_NUM)
+    put(cells, 65, 4, " [═]", S.S_STEP_NUM)
     
     return cells
 
